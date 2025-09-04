@@ -1,0 +1,1310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Geo-Point Generator</title>
+
+    <!-- Leaflet Map Library -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- FIX: Switched to the NPM CDN version of the Plus Code Library, which works reliably. -->
+    <script src="https://cdn.jsdelivr.net/npm/open-location-code@1.0.3/openlocationcode.min.js"></script>
+
+    <!-- Google Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+
+    <style>
+        /* CSS Reset and Global Styles */
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1E1E1E;
+            --primary-color: #A8C7FA;
+            --on-primary-color: #003366;
+            --secondary-container: #3F4859;
+            --on-secondary-container: #DDE2F9;
+            --error-color: #FF5252; /* Saturated Red */
+            --saved-color: #FFA500; /* Orange for saved pins */
+            --text-color: #E3E3E3;
+            --outline-color: #8E9099;
+            --elevation-1: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px 1px rgba(0,0,0,.15);
+            --elevation-2: 0 1px 2px rgba(0,0,0,.3), 0 2px 6px 2px rgba(0,0,0,.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        /* Map Container */
+        #map {
+            width: 100%;
+            height: 100%;
+            background-color: #333;
+            z-index: 1;
+        }
+        .leaflet-control-zoom, .leaflet-control-attribution {
+            display: none; /* Hide default leaflet controls for a cleaner UI */
+        }
+        
+        /* MODIFIED: Custom Leaflet Popup Styles */
+        .leaflet-popup-content-wrapper {
+            background-color: var(--surface-color);
+            border-radius: 8px;
+            color: var(--text-color);
+            box-shadow: var(--elevation-2);
+            cursor: pointer;
+        }
+        .leaflet-popup-content {
+            margin: 10px 15px;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+        }
+        .leaflet-popup-tip-container {
+            display: none; /* Hide the ugly arrow */
+        }
+        .leaflet-popup-close-button {
+            color: var(--text-color) !important;
+            top: 8px !important;
+            right: 8px !important;
+        }
+
+        /* Floating Action Buttons (FABs) */
+        .fab {
+            position: absolute;
+            z-index: 1000;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            background-color: var(--secondary-container);
+            color: var(--on-secondary-container);
+            border-radius: 16px;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--elevation-2);
+            cursor: pointer;
+            transition: transform 0.2s ease, background-color 0.2s ease;
+        }
+        .fab:active {
+            transform: scale(0.95);
+        }
+        .fab .material-symbols-outlined {
+            font-size: 24px;
+        }
+
+        #results-btn {
+            bottom: 168px;
+            display: none; /* Initially hidden */
+        }
+        #locate-btn {
+            bottom: 96px;
+        }
+        #settings-btn {
+            bottom: 24px;
+        }
+        
+        #map-style-btn {
+            bottom: 24px;
+            left: 20px;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+        }
+        #map-style-btn .material-symbols-outlined {
+            font-size: 22px;
+        }
+
+
+        /* Bottom Sheet Panels (Settings & Results) */
+        .bottom-sheet {
+            position: absolute;
+            z-index: 2000;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            max-height: 70vh;
+            background-color: var(--surface-color);
+            border-top-left-radius: 24px;
+            border-top-right-radius: 24px;
+            box-shadow: var(--elevation-2);
+            transform: translateY(110%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+            display: flex;
+            flex-direction: column;
+            touch-action: none; 
+        }
+        .bottom-sheet.active {
+            transform: translateY(0);
+        }
+        .bottom-sheet-header {
+            padding: 8px 16px;
+            text-align: center;
+            cursor: grab;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            touch-action: pan-y;
+        }
+        .grab-handle {
+            width: 32px;
+            height: 4px;
+            background-color: var(--outline-color);
+            border-radius: 2px;
+            margin: 8px auto;
+        }
+
+        .bottom-sheet-content {
+            padding: 0 16px 24px;
+            overflow-y: auto;
+            flex-grow: 1;
+            touch-action: pan-y;
+            overscroll-behavior-y: contain;
+        }
+        .bottom-sheet-content ul {
+            padding-left: 0;
+            margin: 0;
+            list-style: none;
+        }
+        .list-header {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            color: var(--outline-color);
+            margin-top: 16px;
+            margin-bottom: 8px;
+            padding-left: 4px;
+        }
+        
+        .bottom-sheet.is-transparent {
+            opacity: 0.5;
+            transition: opacity 0.2s ease-in-out;
+        }
+
+        /* Form Elements inside Panels */
+        .input-group {
+            margin-bottom: 20px;
+        }
+        .input-group label {
+            display: block;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            color: var(--text-color);
+        }
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 12px 16px;
+            background-color: var(--bg-color);
+            border: 1px solid var(--outline-color);
+            border-radius: 8px;
+            color: var(--text-color);
+            font-size: 1rem;
+            transition: border-color 0.2s ease, background-color 0.2s ease;
+        }
+        .input-group input:focus, .input-group select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        .input-group input.dragging, .input-group select.dragging {
+            border-color: var(--primary-color) !important;
+            background-color: var(--secondary-container);
+        }
+        input[type="number"].draggable, select.draggable {
+            cursor: ns-resize;
+        }
+        .input-group .row {
+            display: flex;
+            gap: 10px;
+        }
+        .input-group .row > * {
+            flex-grow: 1;
+        }
+
+        /* Custom Toggle Switch */
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 52px;
+            height: 32px;
+        }
+        .switch input { display: none; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--secondary-container);
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 24px;
+            width: 24px;
+            left: 4px;
+            bottom: 4px;
+            background-color: var(--on-secondary-container);
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: var(--primary-color);
+        }
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        #address-group {
+            transition: opacity 0.3s, transform 0.3s, max-height 0.3s;
+            opacity: 1;
+            transform: translateY(0);
+            max-height: 200px;
+            overflow: hidden;
+        }
+
+        #address-group.hidden {
+            opacity: 0;
+            transform: translateY(-10px);
+            max-height: 0;
+            margin-bottom: 0;
+        }
+
+
+        .action-button {
+            width: 100%;
+            padding: 14px;
+            border-radius: 12px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            margin-top: 10px;
+        }
+        .primary-action {
+            background-color: var(--primary-color);
+            color: var(--on-primary-color);
+        }
+        .secondary-action {
+            background-color: var(--secondary-container);
+            color: var(--on-secondary-container);
+        }
+
+        /* Results Panel */
+        .result-item {
+            background-color: var(--bg-color);
+            border-radius: 12px;
+            padding: 20px 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            gap: 10px;
+        }
+        .result-item-content {
+            flex-grow: 1;
+            overflow: hidden;
+            text-align: left;
+        }
+        .result-item-name {
+            font-weight: 600;
+        }
+        .result-item-coords {
+            font-size: 0.9rem;
+            font-family: monospace;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: block;
+        }
+        .result-item-actions {
+            display: flex;
+            align-items: center;
+        }
+        .result-item-actions button, .result-item-save-toggle {
+            background: none;
+            border: none;
+            color: var(--on-secondary-container);
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+        }
+        .result-item-actions button:hover, .result-item-save-toggle:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .result-item-save-toggle.remove-btn {
+            color: var(--error-color);
+        }
+
+        /* ADDED: Highlight animation for result items */
+        @keyframes flash-highlight {
+            0%, 100% { box-shadow: 0 0 0 0px rgba(168, 199, 250, 0); }
+            25%, 75% { box-shadow: 0 0 0 3px rgba(168, 199, 250, 0.7); }
+            50% { box-shadow: 0 0 0 0px rgba(168, 199, 250, 0); }
+        }
+        .result-item.highlight {
+            animation: flash-highlight 1.2s ease-in-out;
+        }
+
+        /* Toast Notification */
+        #toast {
+            position: absolute;
+            z-index: 9999;
+            bottom: 24px;
+            left: 50%;
+            transform: translate(-50%, 100px);
+            background-color: var(--secondary-container);
+            color: var(--on-secondary-container);
+            padding: 12px 24px;
+            border-radius: 28px;
+            font-size: 0.9rem;
+            box-shadow: var(--elevation-2);
+            opacity: 0;
+            visibility: hidden;
+            transition: transform 0.3s ease, opacity 0.3s ease, visibility 0.3s;
+        }
+        #toast.show {
+            transform: translate(-50%, 0);
+            opacity: 1;
+            visibility: visible;
+        }
+    </style>
+</head>
+<body>
+    <!-- The Map -->
+    <div id="map"></div>
+
+    <!-- Floating Action Buttons -->
+    <button id="results-btn" class="fab" title="Show Results">
+        <span class="material-symbols-outlined">fact_check</span>
+    </button>
+    <button id="locate-btn" class="fab" title="Use My Location">
+        <span class="material-symbols-outlined">my_location</span>
+    </button>
+    <button id="settings-btn" class="fab" title="Open Settings">
+        <span class="material-symbols-outlined">tune</span>
+    </button>
+    <button id="map-style-btn" class="fab" title="Toggle Map Style">
+        <span class="material-symbols-outlined">satellite</span>
+    </button>
+
+    <!-- Settings Panel -->
+    <div id="settings-panel" class="bottom-sheet">
+        <div class="bottom-sheet-header">
+            <div class="grab-handle"></div>
+        </div>
+        <div class="bottom-sheet-content">
+            <div id="address-group" class="input-group hidden">
+                <label for="address">Find by Location</label>
+                <!-- MODIFICATION START: Added Toggle for Plus Code -->
+                <div class="toggle-switch" style="margin-bottom: 10px;">
+                    <label for="plus-code-toggle">Use Plus Code</label>
+                    <label class="switch">
+                        <input type="checkbox" id="plus-code-toggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <!-- MODIFICATION END -->
+                <input type="text" id="address" placeholder="Address or Coordinates">
+                <button id="use-address" class="action-button secondary-action">Find Location</button>
+            </div>
+            
+            <div class="input-group">
+                <label for="count">Number of Coordinates</label>
+                <input type="number" id="count" value="1" min="1" inputmode="numeric" class="draggable">
+            </div>
+            <div class="input-group">
+                <label for="radius">Radius</label>
+                <div class="row">
+                    <select id="radius-unit" class="draggable">
+                        <option value="meters">Meters</option>
+                        <option value="kilometers">Kilometers</option>
+                        <option value="miles">Miles</option>
+                    </select>
+                    <input type="number" id="radius" value="1" min="0.0001" step="0.1" inputmode="numeric" class="draggable">
+                </div>
+            </div>
+             <div class="input-group">
+                 <div class="toggle-switch">
+                    <label for="exact-distance">Generate at Exact Distance</label>
+                    <label class="switch">
+                        <input type="checkbox" id="exact-distance">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div class="input-group">
+                 <div class="toggle-switch">
+                    <label for="location-mode">Use Current Location</label>
+                    <label class="switch">
+                        <input type="checkbox" id="location-mode" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+            <button id="generate-btn" class="action-button primary-action">Generate Points</button>
+        </div>
+    </div>
+
+    <!-- Results Panel -->
+    <div id="results-panel" class="bottom-sheet">
+        <div class="bottom-sheet-header">
+            <div class="grab-handle"></div>
+        </div>
+        <div class="bottom-sheet-content">
+            <div id="saved-list-container"></div>
+            <div id="generated-list-container"></div>
+        </div>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div id="toast"></div>
+
+    <script>
+        // Use window.onload to ensure all scripts are loaded first
+        window.onload = () => {
+            // FIX: Create an instance of the OpenLocationCode library as hinted by the working script.js
+            const OLC = new OpenLocationCode();
+
+            // --- Constants ---
+            const GREEK_LETTERS = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron', 'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega'];
+            
+            // --- UI Element References ---
+            const settingsPanel = document.getElementById('settings-panel');
+            const resultsPanel = document.getElementById('results-panel');
+            const toastElement = document.getElementById('toast');
+            const mapElement = document.getElementById('map');
+            const settingsBtn = document.getElementById('settings-btn');
+            const resultsBtn = document.getElementById('results-btn');
+            const locateBtn = document.getElementById('locate-btn');
+            const mapStyleBtn = document.getElementById('map-style-btn');
+            const generateBtn = document.getElementById('generate-btn');
+            const useAddressBtn = document.getElementById('use-address');
+            const locationModeToggle = document.getElementById('location-mode');
+            const addressGroup = document.getElementById('address-group');
+            
+            // --- State Variables ---
+            let currentCircle = null;
+            let currentCenterMarker = null;
+            let lastGeneratedPoints = [];
+            let savedPoints = [];
+            const pointMarkers = {}; // Maps pointId to leaflet marker instance
+            let lastKnownLat = 39.8283; // Default to center of contiguous US
+            let lastKnownLon = -98.5795;
+ 
+            // --- Haptic Feedback ---
+            const vibrate = (pattern = 5) => window.navigator.vibrate?.(pattern);
+
+            // --- Toast Notifications ---
+            const showToast = (message) => {
+                toastElement.textContent = message;
+                toastElement.classList.add('show');
+                setTimeout(() => toastElement.classList.remove('show'), 3000);
+            };
+
+            // --- Map Initialization ---
+            const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri' });
+            const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: 'OpenStreetMap' });
+            const map = L.map(mapElement, { center: [lastKnownLat, lastKnownLon], zoom: 5, layers: [streetLayer] });
+
+            // --- Settings Persistence ---
+            const settingsToSave = ['count', 'radius', 'radius-unit', 'location-mode', 'exact-distance']; 
+            const saveSettings = () => {
+                const settings = {};
+                settingsToSave.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el.type === 'checkbox') settings[id] = el.checked;
+                    else settings[id] = el.value;
+                });
+                settings['map-type'] = map.hasLayer(satelliteLayer) ? 'satellite' : 'street';
+                localStorage.setItem('geoGenSettings', JSON.stringify(settings));
+            };
+
+            const loadSettings = () => {
+                const settings = JSON.parse(localStorage.getItem('geoGenSettings'));
+                if (settings) {
+                    settingsToSave.forEach(id => {
+                        const el = document.getElementById(id);
+                        if(el){
+                            if (el.type === 'checkbox') el.checked = settings[id];
+                            else el.value = settings[id];
+                            if (id === 'location-mode') {
+                                addressGroup.classList.toggle('hidden', el.checked);
+                            }
+                        }
+                    });
+                    const mapType = settings['map-type'] || 'street';
+                    updateMapStyle(mapType, false);
+                } else {
+                    addressGroup.classList.toggle('hidden', document.getElementById('location-mode').checked);
+                    updateMapStyle('street', false);
+                }
+            };
+
+            // --- Draggable Inputs Logic ---
+            const initDraggableInput = (input) => {
+                let isDragging = false;
+                let startY, startValue;
+
+                const handleMove = (e) => {
+                    if (!isDragging) return;
+                    e.preventDefault();
+                    const oldValue = input.value;
+                    const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+                    const deltaY = startY - currentY;
+                    const step = parseFloat(input.step) || 1;
+                    const sensitivity = input.id === 'radius' ? 5 : 20;
+                    
+                    let changeAmount = Math.round(deltaY / sensitivity);
+                    let newValue;
+                    
+                    // FEATURE: When radius unit is meters, increment by 10
+                    if (input.id === 'radius' && document.getElementById('radius-unit').value === 'meters') {
+                        newValue = startValue + (changeAmount * 10);
+                    } else {
+                        newValue = startValue + (changeAmount * step);
+                    }
+                    
+                    const min = parseFloat(input.min) || -Infinity;
+                    const finalValue = Math.max(min, newValue);
+                    
+                    const formatPrecision = (input.id === 'radius' && document.getElementById('radius-unit').value === 'meters') ? 0 : 2;
+                    input.value = finalValue.toFixed(formatPrecision);
+                    
+                    if (input.value !== oldValue) {
+                        vibrate();
+                        input.dispatchEvent(new Event('input'));
+                    }
+                };
+
+                const handleEnd = () => {
+                    isDragging = false;
+                    settingsPanel.classList.remove('is-transparent');
+                    input.classList.remove('dragging');
+                    document.body.style.cursor = 'default';
+                    window.removeEventListener('mousemove', handleMove);
+                    window.removeEventListener('mouseup', handleEnd);
+                    window.removeEventListener('touchmove', handleMove);
+                    window.removeEventListener('touchend', handleEnd);
+                };
+
+                const handleStart = (e) => {
+                    if (input.id === 'radius') settingsPanel.classList.add('is-transparent');
+                    isDragging = true;
+                    input.classList.add('dragging');
+                    startY = e.touches ? e.touches[0].clientY : e.clientY;
+                    startValue = parseFloat(input.value) || 0;
+                    document.body.style.cursor = 'ns-resize';
+                    window.addEventListener('mousemove', handleMove);
+                    window.addEventListener('mouseup', handleEnd);
+                    window.addEventListener('touchmove', handleMove, { passive: false });
+                    window.addEventListener('touchend', handleEnd);
+                };
+
+                input.addEventListener('mousedown', handleStart);
+                input.addEventListener('touchstart', handleStart, { passive: false });
+            };
+
+            const initDraggableSelect = (select) => {
+                let isDragging = false;
+                let startY, startIndex;
+
+                const handleMove = (e) => {
+                    if (!isDragging) return;
+                    e.preventDefault();
+                    const oldIndex = select.selectedIndex;
+                    const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+                    const deltaY = startY - currentY;
+                    const sensitivity = 50; 
+                    const indexChange = Math.round(deltaY / sensitivity);
+                    
+                    let newIndex = startIndex - indexChange; 
+                    newIndex = Math.max(0, Math.min(select.options.length - 1, newIndex));
+
+                    if (newIndex !== oldIndex) {
+                        select.selectedIndex = newIndex;
+                        vibrate();
+                        select.dispatchEvent(new Event('change'));
+                    }
+                };
+
+                const handleEnd = () => {
+                    isDragging = false;
+                    settingsPanel.classList.remove('is-transparent');
+                    select.classList.remove('dragging');
+                    document.body.style.cursor = 'default';
+                    window.removeEventListener('mousemove', handleMove);
+                    window.removeEventListener('mouseup', handleEnd);
+                    window.removeEventListener('touchmove', handleMove);
+                    window.removeEventListener('touchend', handleEnd);
+                };
+
+                const handleStart = (e) => {
+                    if (select.id === 'radius-unit') settingsPanel.classList.add('is-transparent');
+                    isDragging = true;
+                    select.classList.add('dragging');
+                    startY = e.touches ? e.touches[0].clientY : e.clientY;
+                    startIndex = select.selectedIndex;
+                    document.body.style.cursor = 'ns-resize';
+                    window.addEventListener('mousemove', handleMove);
+                    window.addEventListener('mouseup', handleEnd);
+                    window.addEventListener('touchmove', handleMove, { passive: false });
+                    window.addEventListener('touchend', handleEnd);
+                };
+
+                select.addEventListener('mousedown', handleStart);
+                select.addEventListener('touchstart', handleStart, { passive: false });
+            };
+
+            // --- UI Interaction Logic ---
+            const closeAllPanels = (affectHistory = false) => {
+                document.querySelectorAll('.bottom-sheet.active').forEach(panel => {
+                    panel.style.transform = '';
+                    panel.classList.remove('active');
+                });
+                if (affectHistory && history.state?.panelOpen) {
+                    history.back();
+                }
+            };
+
+            const togglePanel = (panel) => {
+                const isActive = panel.classList.contains('active');
+                let anotherPanelWasActive = false;
+                
+                document.querySelectorAll('.bottom-sheet.active').forEach(p => {
+                    if (p !== panel) {
+                        anotherPanelWasActive = true;
+                        p.classList.remove('active');
+                    }
+                });
+
+                if (isActive) {
+                    closeAllPanels(true);
+                } else {
+                    panel.classList.add('active');
+                    if (anotherPanelWasActive) {
+                        history.replaceState({ panelOpen: true }, '');
+                    } else if (!history.state?.panelOpen) {
+                        history.pushState({ panelOpen: true }, '');
+                    }
+                }
+            };
+
+            const initPanelSwipe = (panel) => {
+                const header = panel.querySelector('.bottom-sheet-header');
+                let startY, currentY, deltaY = 0;
+
+                header.addEventListener('click', () => {
+                    if (panel.classList.contains('active')) {
+                        closeAllPanels(true);
+                    }
+                });
+
+                const handleTouchStart = (e) => {
+                    e.stopPropagation();
+                    startY = e.touches[0].clientY;
+                    currentY = startY;
+                    panel.style.transition = 'none';
+                    if (!history.state?.panelOpen) {
+                        history.pushState({ panelOpen: true }, '');
+                    }
+                };
+
+                const handleTouchMove = (e) => {
+                    e.stopPropagation();
+                    currentY = e.touches[0].clientY;
+                    deltaY = currentY - startY;
+                    if (deltaY < 0) deltaY = 0; 
+                    panel.style.transform = `translateY(${deltaY}px)`;
+                };
+
+                const handleTouchEnd = (e) => {
+                    e.stopPropagation();
+                    panel.style.transition = ''; 
+                    const closeThreshold = panel.offsetHeight * 0.1;
+                    if (deltaY > closeThreshold) { 
+                        closeAllPanels(true);
+                    } else {
+                        panel.style.transform = ''; 
+                    }
+                    deltaY = 0;
+                };
+
+                header.addEventListener('touchstart', handleTouchStart, { passive: true });
+                header.addEventListener('touchmove', handleTouchMove, { passive: false });
+                header.addEventListener('touchend', handleTouchEnd);
+            };
+ 
+           const getPointId = (point) => `${point.lat.toFixed(7)},${point.lon.toFixed(7)}`;
+ 
+            // --- Map and Point Logic ---
+            const updateMarkerStyle = (pointId, isSaved) => {
+                const marker = pointMarkers[pointId];
+                if (marker) {
+                    const color = isSaved ? 'var(--saved-color)' : 'var(--error-color)';
+                    marker.setIcon(createIcon(color));
+                }
+            };
+
+            const addPointToMap = (point) => {
+                const pointId = getPointId(point);
+                if (pointMarkers[pointId]) return;
+
+                const isSaved = savedPoints.some(p => getPointId(p) === pointId);
+                const color = isSaved ? 'var(--saved-color)' : 'var(--error-color)';
+                const marker = L.marker([point.lat, point.lon], { icon: createIcon(color) })
+                    .addTo(map)
+                    .bindPopup(`${point.name}`);
+
+                const handleInteraction = () => {
+                    const wasActive = resultsPanel.classList.contains('active');
+                    if (!wasActive) {
+                        togglePanel(resultsPanel);
+                    }
+                    
+                    const elementId = 'point-' + pointId.replace(/[.,]/g, '_');
+                    const resultItem = document.getElementById(elementId);
+                    
+                    if (resultItem) {
+                        const contentScroller = resultsPanel.querySelector('.bottom-sheet-content');
+                        
+                        const scrollAndHighlight = () => {
+                            const scrollTarget = resultItem.offsetTop - (contentScroller.clientHeight / 2) + (resultItem.clientHeight / 2);
+                            contentScroller.scrollTo({
+                                top: scrollTarget,
+                                behavior: 'smooth'
+                            });
+                            resultItem.classList.add('highlight');
+                            setTimeout(() => {
+                                resultItem.classList.remove('highlight');
+                            }, 1300);
+                        };
+
+                        if (wasActive) {
+                            scrollAndHighlight();
+                        } else {
+                            setTimeout(scrollAndHighlight, 300);
+                        }
+                    }
+                };
+                
+                marker.on('click', handleInteraction);
+
+                marker.on('popupopen', () => {
+                     marker.getPopup().getElement().addEventListener('click', (e) => {
+                        if (e.target.closest('.leaflet-popup-close-button')) return;
+                        handleInteraction();
+                    });
+                });
+
+                pointMarkers[pointId] = marker;
+            };
+
+            const clearMap = () => {
+                if (currentCircle) map.removeLayer(currentCircle);
+                if (currentCenterMarker) map.removeLayer(currentCenterMarker);
+                currentCircle = null;
+                currentCenterMarker = null;
+           };
+
+           const clearGeneratedMarkers = () => {
+               lastGeneratedPoints.forEach(point => {
+                   const pointId = getPointId(point);
+                   if(pointMarkers[pointId] && !savedPoints.some(p => getPointId(p) === pointId)) {
+                       map.removeLayer(pointMarkers[pointId]);
+                       delete pointMarkers[pointId];
+                   }
+               });
+             };
+ 
+             const createIcon = (color) => {
+                 return L.divIcon({
+                   html: `<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1; font-size: 32px; color: ${color}; text-shadow: -1px -1px 0 var(--bg-color), 1px -1px 0 var(--bg-color), -1px 1px 0 var(--bg-color), 1px 1px 0 var(--bg-color), 0 2px 4px rgba(0,0,0,0.6);">place</span>`,
+                    className: '',
+                    iconSize: [32, 32],
+                    iconAnchor: [16, 32]
+                });
+            };
+
+            const addCenterAndCircle = (lat, lon) => {
+                const radiusVal = parseFloat(document.getElementById("radius").value) || 0;
+                const unit = document.getElementById("radius-unit").value;
+                const conversion = { meters: 1, kilometers: 1000, miles: 1609.34 };
+                const radiusMeters = radiusVal * conversion[unit];
+                
+                clearMap();
+                currentCenterMarker = L.marker([lat, lon], { icon: createIcon('var(--primary-color)') }).addTo(map);
+
+                if (radiusMeters > 0) {
+                    currentCircle = L.circle([lat, lon], {
+                        color: 'var(--primary-color)',
+                        fillColor: 'var(--primary-color)',
+                        fillOpacity: 0.1,
+                        radius: radiusMeters
+                    }).addTo(map);
+
+                    const circleBounds = currentCircle.getBounds();
+                    const mapBounds = map.getBounds();
+                    const targetZoom = map.getBoundsZoom(circleBounds, false, [50, 50]); // Get ideal zoom for circle
+
+                    // FEATURE: Auto-zoom map to fit circle (in and out)
+                    // Zoom out if circle is bigger than the view
+                    if (!mapBounds.contains(circleBounds)) {
+                         map.fitBounds(circleBounds, { padding: [50, 50], animate: true, duration: 0.5 });
+                    } 
+                    // Zoom in if the circle is much smaller than the view
+                    else if (targetZoom > map.getZoom() + 1) { // +1 threshold prevents frantic zooming
+                         map.flyTo([lat, lon], targetZoom, { animate: true, duration: 0.5 });
+                    }
+
+                } else {
+                    map.setView([lat, lon], map.getZoom());
+                }
+            };
+ 
+           const renderResults = () => {
+               const savedContainer = document.getElementById('saved-list-container');
+               const generatedContainer = document.getElementById('generated-list-container');
+               savedContainer.innerHTML = '';
+               generatedContainer.innerHTML = '';
+
+               if (savedPoints.length > 0) {
+                   savedContainer.innerHTML = '<h2 class="list-header">Saved</h2><ul id="saved-list"></ul>';
+                   const savedList = document.getElementById('saved-list');
+                   savedPoints.forEach(point => savedList.appendChild(createResultItem(point, true)));
+               }
+
+               const unsavedGeneratedPoints = lastGeneratedPoints.filter(p => !savedPoints.some(sp => getPointId(sp) === getPointId(p)));
+               if (unsavedGeneratedPoints.length > 0) {
+                   generatedContainer.innerHTML = '<h2 class="list-header">Generated</h2><ul id="generated-list"></ul>';
+                   const generatedList = document.getElementById('generated-list');
+                   unsavedGeneratedPoints.forEach(point => generatedList.appendChild(createResultItem(point, false)));
+               }
+           };
+
+           const createResultItem = (point, isSaved) => {
+               const li = document.createElement('li');
+               li.className = 'result-item';
+               const coordString = `${point.lat.toFixed(7)}, ${point.lon.toFixed(7)}`;
+               const pointId = getPointId(point);
+               li.id = 'point-' + pointId.replace(/[.,]/g, '_');
+
+               li.innerHTML = `
+                   <button class="result-item-save-toggle ${isSaved ? 'remove-btn' : 'save-btn'}" title="${isSaved ? 'Remove' : 'Save'}">
+                       <span class="material-symbols-outlined">${isSaved ? 'bookmark_remove' : 'bookmark_add'}</span>
+                   </button>
+                   <div class="result-item-content">
+                        <span class="result-item-name">${point.name}</span>
+                        <span class="result-item-coords">${coordString}</span>
+                   </div>
+                   <div class="result-item-actions">
+                       <button class="copy-btn" title="Copy Coordinates">
+                           <span class="material-symbols-outlined">content_copy</span>
+                       </button>
+                       <button class="gmaps-btn" title="Open in Google Maps">
+                           <span class="material-symbols-outlined">open_in_new</span>
+                       </button>
+                   </div>
+               `;
+
+               li.querySelector('.result-item-content').addEventListener('click', () => {
+                    vibrate();
+                    map.flyTo([point.lat, point.lon], 16);
+                    closeAllPanels(true);
+               });
+
+               li.querySelector('.copy-btn').addEventListener('click', () => {
+                   vibrate();
+                   navigator.clipboard.writeText(coordString).then(() => showToast('Coordinates copied!')).catch(() => showToast('Failed to copy.'));
+               });
+
+               li.querySelector('.gmaps-btn').addEventListener('click', () => {
+                   vibrate();
+                   window.open(`https://www.google.com/maps?q=${point.lat},${point.lon}`, "_blank");
+               });
+               
+               const saveToggleBtn = li.querySelector('.result-item-save-toggle');
+               saveToggleBtn.addEventListener('click', () => {
+                   vibrate(20);
+                   if(isSaved) {
+                        savedPoints = savedPoints.filter(p => getPointId(p) !== pointId);
+                        const isAlsoGenerated = lastGeneratedPoints.some(p => getPointId(p) === pointId);
+                        if (isAlsoGenerated) {
+                            updateMarkerStyle(pointId, false);
+                        } else {
+                            if(pointMarkers[pointId]) {
+                                map.removeLayer(pointMarkers[pointId]);
+                                delete pointMarkers[pointId];
+                            }
+                        }
+                        showToast(`${point.name} removed.`);
+                   } else {
+                       savedPoints.unshift(point);
+                       updateMarkerStyle(pointId, true);
+                       showToast(`${point.name} saved!`);
+                   }
+                   localStorage.setItem('savedGeoPoints', JSON.stringify(savedPoints));
+                   renderResults();
+                   
+                   const unsavedGeneratedPoints = lastGeneratedPoints.filter(p => !savedPoints.some(sp => getPointId(sp) === getPointId(p)));
+                    if (savedPoints.length === 0 && unsavedGeneratedPoints.length === 0) {
+                        resultsBtn.style.display = 'none';
+                        closeAllPanels(true);
+                    }
+               });
+
+               return li;
+           };
+
+             const generateCoordinates = () => {
+                 vibrate(20);
+                 clearGeneratedMarkers();
+                 addCenterAndCircle(lastKnownLat, lastKnownLon);
+ 
+                 const radiusVal = parseFloat(document.getElementById("radius").value);
+                 const count = parseInt(document.getElementById("count").value);
+ 
+                 if (!radiusVal || count <= 0) {
+                     showToast("Please enter a valid radius and count.");
+                     return;
+                 }
+ 
+                 const exact = document.getElementById("exact-distance").checked;
+                 const conversion = { meters: 1, kilometers: 1000, miles: 1609.34 };
+                 const radiusMeters = radiusVal * conversion[document.getElementById("radius-unit").value];
+                 lastGeneratedPoints = [];
+ 
+                 const savedPointNames = savedPoints.map(p => p.name);
+                 const availableNames = GREEK_LETTERS.filter(name => !savedPointNames.includes(name));
+                 let nameIndex = 0;
+
+                 for (let i = 0; i < count; i++) {
+                     const [randLat, randLon] = randomPoint(lastKnownLat, lastKnownLon, radiusMeters, exact);
+                     const pointName = availableNames[nameIndex++] || `Point ${savedPoints.length + i + 1}`;
+                    const newPoint = { name: pointName, lat: randLat, lon: randLon };
+                    lastGeneratedPoints.push(newPoint);
+                    addPointToMap(newPoint);
+                 }
+                 
+                 if (!resultsBtn.style.display || resultsBtn.style.display === 'none') {
+                    resultsBtn.style.display = 'flex';
+                 }
+                 renderResults();
+                 togglePanel(resultsPanel);
+             };
+
+            const updateMapStyle = (style, doSave = true) => {
+                const icon = mapStyleBtn.querySelector('.material-symbols-outlined');
+                if (style === "satellite") {
+                    if (!map.hasLayer(satelliteLayer)) {
+                       map.addLayer(satelliteLayer);
+                       map.removeLayer(streetLayer);
+                    }
+                    icon.textContent = 'map';
+                } else { // street
+                    if (!map.hasLayer(streetLayer)) {
+                        map.addLayer(streetLayer);
+                        map.removeLayer(satelliteLayer);
+                    }
+                    icon.textContent = 'satellite';
+                }
+                if (doSave) saveSettings();
+            };
+ 
+            // --- Event Listeners ---
+            settingsBtn.addEventListener('click', () => {
+                vibrate();
+                togglePanel(settingsPanel);
+            });
+            resultsBtn.addEventListener('click', () => {
+                vibrate();
+                togglePanel(resultsPanel);
+            });
+
+            locateBtn.addEventListener('click', () => {
+                vibrate();
+                showToast("Finding location...");
+                locationModeToggle.checked = true;
+                locationModeToggle.dispatchEvent(new Event('change'));
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(position => {
+                        lastKnownLat = position.coords.latitude;
+                        lastKnownLon = position.coords.longitude;
+                        showToast("Location found!");
+                        addCenterAndCircle(lastKnownLat, lastKnownLon);
+                        map.flyTo([lastKnownLat, lastKnownLon], 13);
+                    }, () => showToast("Could not get your location."), { enableHighAccuracy: true });
+                } else {
+                    showToast("Geolocation is not supported.");
+                }
+            });
+
+            // --- START OF FIXED PLUS CODE LOGIC ---
+            const handleFindLocation = () => {
+                vibrate();
+                const usePlusCode = document.getElementById('plus-code-toggle').checked;
+                const query = document.getElementById("address").value.trim();
+
+                if (!query) {
+                    showToast("Please enter a value.");
+                    return;
+                }
+
+                // Helper function to update map view and state
+                const setMapView = (lat, lon, message) => {
+                    lastKnownLat = lat;
+                    lastKnownLon = lon;
+                    showToast(message);
+                    addCenterAndCircle(lat, lon);
+                    map.flyTo([lat, lon], 13);
+                };
+
+                if (usePlusCode) {
+                    const spaceIndex = query.indexOf(" ");
+                    let code, locality;
+
+                    // Separate code and locality for short codes
+                    if (spaceIndex !== -1) {
+                        code = query.substring(0, spaceIndex).toUpperCase();
+                        locality = query.substring(spaceIndex + 1);
+                    } else {
+                        code = query.toUpperCase();
+                        locality = null;
+                    }
+                    
+                    // FIX: Use the instantiated OLC object for all Plus Code operations.
+                    if (OLC.isFull(code)) {
+                        try {
+                            const decoded = OLC.decode(code);
+                            setMapView(decoded.latitudeCenter, decoded.longitudeCenter, "Plus Code located!");
+                        } catch (error) {
+                            console.error("Plus Code decoding error:", error);
+                            showToast("Invalid full Plus Code format.");
+                        }
+                    } else if (locality) {
+                         if (!OLC.isShort(code)) {
+                            showToast("Invalid short Plus Code format.");
+                            return;
+                        }
+                        showToast(`Recovering code near ${locality}...`);
+                        // Use Nominatim to find the reference location for the short code
+                        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locality)}`)
+                            .then(response => response.ok ? response.json() : Promise.reject('Network error'))
+                            .then(data => {
+                                if (data && data.length > 0) {
+                                    try {
+                                        const refLat = parseFloat(data[0].lat);
+                                        const refLon = parseFloat(data[0].lon);
+                                        const recoveredCode = OLC.recoverNearest(code, refLat, refLon);
+                                        const decoded = OLC.decode(recoveredCode);
+                                        setMapView(decoded.latitudeCenter, decoded.longitudeCenter, "Plus Code recovered!");
+                                    } catch (error) {
+                                        console.error("Plus Code recovery error:", error);
+                                        showToast("Failed to recover Plus Code.");
+                                    }
+                                } else {
+                                    showToast(`Could not find locality: ${locality}.`);
+                                }
+                            })
+                            .catch(err => {
+                                console.error("Locality search failed:", err);
+                                showToast("Error fetching locality.");
+                            });
+                    } else {
+                        // Handle case where it's not a full code and has no locality hint.
+                        showToast("Invalid code, or locality needed for short code.");
+                    }
+                } else {
+                    // Standard address/coordinate lookup
+                    const coordRegex = /^(-?\d{1,3}(\.\d+)?),\s*(-?\d{1,3}(\.\d+)?)$/;
+                    if (coordRegex.test(query)) {
+                        const [lat, lon] = query.split(',').map(parseFloat);
+                        setMapView(lat, lon, "Coordinates located!");
+                        return;
+                    }
+                    showToast("Searching for address...");
+                    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
+                        .then(response => response.ok ? response.json() : Promise.reject('Network error'))
+                        .then(data => {
+                            if (data && data.length > 0) {
+                                setMapView(parseFloat(data[0].lat), parseFloat(data[0].lon), "Location found!");
+                            } else {
+                                showToast("Location not found.");
+                            }
+                        })
+                        .catch(err => {
+                            console.error("Address search failed:", err);
+                            showToast("Error fetching location.");
+                        });
+                }
+            };
+            // --- END OF FIX ---
+
+            useAddressBtn.addEventListener('click', handleFindLocation);
+
+            document.getElementById('plus-code-toggle').addEventListener('change', (e) => {
+                const addressInput = document.getElementById('address');
+                if (e.target.checked) {
+                    addressInput.placeholder = "Enter Plus Code";
+                } else {
+                    addressInput.placeholder = "Address or Coordinates";
+                }
+            });
+
+            mapStyleBtn.addEventListener('click', () => {
+                vibrate();
+                const newStyle = map.hasLayer(satelliteLayer) ? 'street' : 'satellite';
+                updateMapStyle(newStyle);
+            });
+            
+            generateBtn.addEventListener('click', generateCoordinates);
+
+            locationModeToggle.addEventListener('change', () => {
+                addressGroup.classList.toggle('hidden', locationModeToggle.checked);
+            });
+            
+            document.getElementById('radius').addEventListener('input', () => addCenterAndCircle(lastKnownLat, lastKnownLon));
+            document.getElementById('radius-unit').addEventListener('change', () => addCenterAndCircle(lastKnownLat, lastKnownLon));
+
+            document.querySelectorAll('input, select').forEach(el => {
+                el.addEventListener('input', () => { if(el.id) saveSettings(); });
+                el.addEventListener('change', () => { if(el.id !== 'radius-unit') vibrate(); if(el.id) saveSettings(); });
+            });
+            
+            window.addEventListener('popstate', () => {
+                if (!history.state?.panelOpen) {
+                    closeAllPanels(false);
+                }
+            });
+
+            // --- Coordinate Generation Math ---
+            const toRadians = deg => deg * Math.PI / 180;
+            const toDegrees = rad => rad * 180 / Math.PI;
+
+            function randomPoint(lat, lon, distanceMeters, exact) {
+                const earthRadius = 6371000;
+                const angularDistance = distanceMeters / earthRadius;
+                const d = exact ? angularDistance : angularDistance * Math.sqrt(Math.random());
+                const theta = 2 * Math.PI * Math.random();
+                const lat1 = toRadians(lat);
+                const lon1 = toRadians(lon);
+                const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(theta));
+                const lon2 = lon1 + Math.atan2(Math.sin(theta) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+                return [toDegrees(lat2), toDegrees(lon2)];
+            }
+            
+            // --- Initial Setup ---
+            const loadSavedPoints = () => {
+                savedPoints = JSON.parse(localStorage.getItem('savedGeoPoints')) || [];
+                savedPoints.forEach(point => addPointToMap(point));
+                if(savedPoints.length > 0) resultsBtn.style.display = 'flex';
+                renderResults();
+            };
+            
+            // FEATURE: One-finger (double-tap + drag) zoom controls for mobile
+            const initOneFingerZoom = (map) => {
+                const mapContainer = map.getContainer();
+                let lastTap = 0;
+                let isZooming = false;
+                let zoomStartY;
+                let initialZoom;
+                const doubleTapDelay = 300; // ms
+
+                mapContainer.addEventListener('touchstart', (e) => {
+                    if (e.touches.length !== 1) { return; }
+                    const now = new Date().getTime();
+                    if (now - lastTap < doubleTapDelay) {
+                        e.preventDefault();
+                        isZooming = true;
+                        zoomStartY = e.touches[0].clientY;
+                        initialZoom = map.getZoom();
+                        map.dragging.disable();
+                        map.scrollWheelZoom.disable();
+                    }
+                    lastTap = now;
+                }, { passive: false });
+
+                mapContainer.addEventListener('touchmove', (e) => {
+                    if (isZooming && e.touches.length === 1) {
+                        e.preventDefault();
+                        const currentY = e.touches[0].clientY;
+                        const deltaY = zoomStartY - currentY; // drag down = zoom out
+                        const sensitivity = 0.02; 
+                        const newZoom = initialZoom + (deltaY * sensitivity);
+                        map.setZoom(newZoom);
+                    }
+                }, { passive: false });
+
+                const endZoom = (e) => {
+                    if (isZooming) {
+                        if (e) e.preventDefault();
+                        isZooming = false;
+                        map.dragging.enable();
+                        map.scrollWheelZoom.enable();
+                    }
+                };
+
+                mapContainer.addEventListener('touchend', endZoom, { passive: false });
+                mapContainer.addEventListener('touchcancel', endZoom, { passive: false });
+            };
+
+            const initialGeolocationCheck = () => {
+                const settings = JSON.parse(localStorage.getItem('geoGenSettings'));
+                const useCurrentLocation = settings ? settings['location-mode'] : true;
+
+                if (useCurrentLocation && navigator.geolocation) {
+                     navigator.geolocation.getCurrentPosition(position => {
+                        lastKnownLat = position.coords.latitude;
+                        lastKnownLon = position.coords.longitude;
+                        addCenterAndCircle(lastKnownLat, lastKnownLon);
+                        map.setView([lastKnownLat, lastKnownLon], 13);
+                    }, () => {
+                        addCenterAndCircle(lastKnownLat, lastKnownLon);
+                        map.setView([lastKnownLat, lastKnownLon], 5);
+                    }, { enableHighAccuracy: true });
+                } else {
+                     addCenterAndCircle(lastKnownLat, lastKnownLon);
+                     map.setView([lastKnownLat, lastKnownLon], 5);
+                }
+            };
+            
+            loadSettings();
+            loadSavedPoints();
+            initDraggableInput(document.getElementById('count'));
+            initDraggableInput(document.getElementById('radius'));
+            initDraggableSelect(document.getElementById('radius-unit'));
+            initPanelSwipe(settingsPanel);
+            initPanelSwipe(resultsPanel);
+            initOneFingerZoom(map);
+            initialGeolocationCheck();
+        };
+    </script>
+</body>
+</html>
+
