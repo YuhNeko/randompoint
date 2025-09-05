@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>random Point Generator</title>
+    <title>Random Point Generator</title>
     <meta name="theme-color" content="#121212">
 
     <!-- Leaflet Map Library -->
@@ -994,7 +994,7 @@
                     let newValue;
                     
                     if (input.id === 'radius' && document.getElementById('radius-unit').value === 'meters') {
-                        newValue = startValue + (changeAmount * 5);
+                        newValue = startValue + (changeAmount * 10);
                     } else {
                         newValue = startValue + (changeAmount * step);
                     }
@@ -1172,3 +1172,4 @@
     </script>
 </body>
 </html>
+
