@@ -352,9 +352,11 @@
                 <label for="radius">Radius</label>
                 <div class="row">
                     <select id="radius-unit" class="draggable">
-                        <option value="meters">Meters</option>
-                        <option value="kilometers">Kilometers</option>
                         <option value="miles">Miles</option>
+                        <option value="kilometers">Kilometers</option>
+                        <option value="meters">Meters</option>
+                        
+                        
                     </select>
                     <input type="number" id="radius" value="1" min="0.0001" step="0.1" inputmode="numeric" class="draggable">
                 </div>
@@ -917,6 +919,33 @@
             locationModeToggle.addEventListener('change', () => addressGroup.classList.toggle('hidden', locationModeToggle.checked));
             document.getElementById('radius').addEventListener('input', () => addCenterAndCircle(lastKnownLat, lastKnownLon));
             document.getElementById('radius-unit').addEventListener('change', () => addCenterAndCircle(lastKnownLat, lastKnownLon));
+
+            // START: Added logic for radius unit conversion
+            const radiusUnitSelect = document.getElementById('radius-unit');
+            const radiusInput = document.getElementById('radius');
+            // Store the initial unit to track changes from
+            let previousUnit = radiusUnitSelect.value; 
+
+            radiusUnitSelect.addEventListener('change', (e) => {
+                const currentUnit = e.target.value;
+                let radiusValue = parseFloat(radiusInput.value);
+
+                if (isNaN(radiusValue)) return; // Do nothing if the input isn't a valid number
+
+                // If we are swapping TO meters from a different unit
+                if (currentUnit === 'meters' && previousUnit !== 'meters') {
+                    radiusInput.value = (radiusValue * 10);
+                } 
+                // If we are swapping FROM meters to a different unit
+                else if (currentUnit !== 'meters' && previousUnit === 'meters') {
+                    radiusInput.value = (radiusValue / 10);
+                }
+                
+                // Update the previous unit for the next change event
+                previousUnit = currentUnit;
+            });
+            // END: Added logic for radius unit conversion
+
             document.querySelectorAll('input, select').forEach(el => {
                 el.addEventListener('change', saveSettings);
             });
@@ -1117,5 +1146,3 @@
     </script>
 </body>
 </html>
-
-
