@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Random Point Generator</title>
+    <title>random Point Generator</title>
     <meta name="theme-color" content="#121212">
 
     <!-- Leaflet Map Library -->
@@ -200,6 +200,11 @@
         input:checked + .slider:before { 
             background-color: var(--md-sys-color-on-primary);
             transform: translateX(20px); 
+        }
+
+        select option {
+            background-color: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface);
         }
 
         #address-group {
@@ -917,34 +922,36 @@
             });
             generateBtn.addEventListener('click', generateCoordinates);
             locationModeToggle.addEventListener('change', () => addressGroup.classList.toggle('hidden', locationModeToggle.checked));
-            document.getElementById('radius').addEventListener('input', () => addCenterAndCircle(lastKnownLat, lastKnownLon));
-            document.getElementById('radius-unit').addEventListener('change', () => addCenterAndCircle(lastKnownLat, lastKnownLon));
 
-            // START: Added logic for radius unit conversion
-            const radiusUnitSelect = document.getElementById('radius-unit');
             const radiusInput = document.getElementById('radius');
-            // Store the initial unit to track changes from
-            let previousUnit = radiusUnitSelect.value; 
+            const radiusUnitSelect = document.getElementById('radius-unit');
 
-            radiusUnitSelect.addEventListener('change', (e) => {
-                const currentUnit = e.target.value;
-                let radiusValue = parseFloat(radiusInput.value);
-
-                if (isNaN(radiusValue)) return; // Do nothing if the input isn't a valid number
-
-                // If we are swapping TO meters from a different unit
-                if (currentUnit === 'meters' && previousUnit !== 'meters') {
-                    radiusInput.value = (radiusValue * 10);
-                } 
-                // If we are swapping FROM meters to a different unit
-                else if (currentUnit !== 'meters' && previousUnit === 'meters') {
-                    radiusInput.value = (radiusValue / 10);
-                }
-                
-                // Update the previous unit for the next change event
-                previousUnit = currentUnit;
+            // This listener provides the live update for the circle on the map as the user drags.
+            radiusInput.addEventListener('input', () => {
+                addCenterAndCircle(lastKnownLat, lastKnownLon);
             });
-            // END: Added logic for radius unit conversion
+            
+            let unitBeforeChange = radiusUnitSelect.value;
+            // Listeners to capture the state of the unit select *before* a manual change.
+            radiusUnitSelect.addEventListener('mousedown', () => unitBeforeChange = radiusUnitSelect.value);
+            radiusUnitSelect.addEventListener('touchstart', () => unitBeforeChange = radiusUnitSelect.value, { passive: true });
+
+            // This listener handles manual changes to the unit dropdown.
+            radiusUnitSelect.addEventListener('change', () => {
+                const newUnit = radiusUnitSelect.value;
+                const currentValue = parseFloat(radiusInput.value);
+
+                if (isNaN(currentValue)) return;
+
+                if (newUnit === 'kilometers' && unitBeforeChange === 'meters') {
+                    const roundedMeters = Math.round(currentValue / 10) * 10;
+                    const newValueInKm = roundedMeters / 1000;
+                    radiusInput.value = newValueInKm.toFixed(2);
+                } else if (newUnit === 'meters' && unitBeforeChange === 'kilometers') {
+                    radiusInput.value = (currentValue * 1000).toFixed(0);
+                }
+                addCenterAndCircle(lastKnownLat, lastKnownLon);
+            });
 
             document.querySelectorAll('input, select').forEach(el => {
                 el.addEventListener('change', saveSettings);
@@ -987,7 +994,7 @@
                     let newValue;
                     
                     if (input.id === 'radius' && document.getElementById('radius-unit').value === 'meters') {
-                        newValue = startValue + (changeAmount * 10);
+                        newValue = startValue + (changeAmount * 5);
                     } else {
                         newValue = startValue + (changeAmount * step);
                     }
@@ -1003,6 +1010,7 @@
                     
                     if (input.value !== oldValue) {
                         vibrate();
+                        // Fire 'input' for live map updates, but not 'change'
                         input.dispatchEvent(new Event('input'));
                     }
                 };
@@ -1016,7 +1024,25 @@
                     window.removeEventListener('mouseup', handleEnd);
                     window.removeEventListener('touchmove', handleMove);
                     window.removeEventListener('touchend', handleEnd);
+
+                    // Perform unit conversion logic only at the end of the drag.
+                    let value = parseFloat(input.value);
+                    const unitSelect = document.getElementById('radius-unit');
+                    const unit = unitSelect.value;
+
+                    if (unit === 'kilometers' && value < 1) {
+                        input.value = (value * 1000).toFixed(0);
+                        unitSelect.value = 'meters';
+                    } else if (unit === 'meters' && value >= 1000) {
+                        const roundedMeters = Math.round(value / 10) * 10;
+                        const newValueInKm = roundedMeters / 1000;
+                        input.value = newValueInKm.toFixed(2);
+                        unitSelect.value = 'kilometers';
+                    }
+                    
+                    // Fire the final change event to trigger saving settings and a final map update.
                     input.dispatchEvent(new Event('change', { bubbles: true }));
+                    addCenterAndCircle(lastKnownLat, lastKnownLon);
                 };
 
                 const handleStart = (e) => {
